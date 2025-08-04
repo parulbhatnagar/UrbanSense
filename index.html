@@ -1,65 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UrbanSense</title>
-    <!-- Include Tailwind CSS from a CDN for rapid styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Configure Tailwind CSS with custom theme properties -->
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              'brand-yellow': '#FBBF24',
-              'brand-dark': '#121212',
-              'brand-light': '#FFFFFF',
-              'brand-gray': '#4B5563',
-            },
-          },
-        },
-      }
-    </script>
-  <!-- 
-    Use an import map to manage JavaScript modules.
-    This allows for bare module specifiers (e.g., 'react') directly in browser code,
-    pointing to CDN-hosted versions of the libraries.
-  -->
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
     "react": "https://esm.sh/react@^19.1.1",
     "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
     "react/": "https://esm.sh/react@^19.1.1/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.12.0"
+    "@google/genai": "https://esm.sh/@google/genai@^1.12.0",
+    "vite": "https://esm.sh/vite@^7.0.6",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^4.7.0"
   }
 }
 </script>
-<!-- 
-    API Key Configuration
-    ---------------------
-    IMPORTANT: You must provide your Google Gemini API key here for the app to work.
-    1. Get your key from Google AI Studio.
-    2. Replace "YOUR_API_KEY" with your actual key.
--->
-<script>
-    if (!window.process) {
-        window.process = {};
-    }
-    if (!window.process.env) {
-        window.process.env = {};
-    }
-    // WARNING: Storing API keys in client-side code is not secure for production.
-    // This is for demonstration purposes only.
-    window.process.env.API_KEY = "YOUR_API_KEY";
-</script>
 <link rel="stylesheet" href="/index.css">
-</head>
-  <body class="bg-brand-dark">
-    <!-- The root element where the React application will be mounted. -->
-    <div id="root"></div>
-    <!-- The main entry point script for the application. -->
-    <script type="module" src="/index.tsx"></script>
-  </body>
-</html>
+<script type="module" src="/index.tsx"></script>
