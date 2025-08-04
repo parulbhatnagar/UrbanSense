@@ -1,0 +1,21 @@
+{
+  "name": "UrbanSense",
+  "short_name": "UrbanSense",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#18181b",
+  "theme_color": "#facc15",
+  "description": "UrbanSense for visually impaired navigation.",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
