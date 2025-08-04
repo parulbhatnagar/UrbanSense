@@ -1,7 +1,7 @@
 {
   "name": "UrbanSense",
   "short_name": "UrbanSense",
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#18181b",
   "theme_color": "#facc15",
