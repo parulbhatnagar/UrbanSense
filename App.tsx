@@ -1,9 +1,9 @@
 import React, { useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import { ViewState, Coordinates, DirectionStep, RouteDetails } from './types';
-import { createImageAnalysisService } from './services/aiService';
-import { getDirections, calculateDistance } from './services/navigationService';
-import CameraCapture from './components/CameraCapture';
-import { CompassIcon, BusIcon, AlertTriangleIcon, SettingsIcon, CameraIcon, ChevronLeftIcon, MicrophoneIcon, ShieldAlertIcon } from './components/icons';
+import { createImageAnalysisService } from './services/aiService.ts';
+import { getDirections, calculateDistance } from './services/navigationService.ts';
+import CameraCapture from './components/CameraCapture.tsx';
+import { CompassIcon, BusIcon, AlertTriangleIcon, SettingsIcon, CameraIcon, ChevronLeftIcon, MicrophoneIcon, ShieldAlertIcon } from './components/icons.tsx';
 
 /**
  * @file This is the main application component for UrbanSense.
