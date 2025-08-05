@@ -55,13 +55,17 @@ const cleanQueryForApi = (query: string): string => {
 
 
 /**
- * Fetches turn-by-turn directions using OpenStreetMap services.
- * It first finds a place with Nominatim and then calculates a walking route with OSRM.
- * @param {Coordinates} start The starting GPS coordinates.
- * @param {string} destinationQuery A string describing the destination (e.g., "nearest cafe").
- * @returns {Promise<RouteDetails>} A promise that resolves to an object containing the full route details.
+ * Fetches directions from the current location to a destination.
+ * @param {Coordinates} start The starting coordinates.
+ * @param {string} destinationQuery The destination to navigate to.
+ * @param {boolean} mockDataMode A flag to indicate if mock data should be returned (for testing/demo purposes).
  */
-export const getDirections = async (start: Coordinates, destinationQuery: string): Promise<RouteDetails> => {
+export const getDirections = async (start: Coordinates, destinationQuery: string, mockDataMode = false): Promise<RouteDetails> => {
+    if (mockDataMode) {
+        // Return a mock route for demonstration
+        return Promise.resolve(getMockRoute(destinationQuery));
+    }
+
     // 1. Clean the user's query to make it API-friendly
     const cleanedQuery = cleanQueryForApi(destinationQuery);
     if (!cleanedQuery) {
@@ -128,4 +132,62 @@ export const getDirections = async (start: Coordinates, destinationQuery: string
         totalDistance: Math.round(leg.distance),
         steps,
     };
+};
+
+/**
+ * Returns a mock route for demonstration purposes.
+ */
+const getMockRoute = (destinationQuery: string): RouteDetails => {
+  // Lowercase for easier matching
+  const query = destinationQuery.toLowerCase();
+  if (query.includes('hospital')) {
+    return {
+      destinationName: 'City Hospital',
+      totalDistance: 350,
+      steps: [
+        { instruction: 'Head straight for 100 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'Turn left and walk 200 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'The hospital entrance is on your right.', location: { latitude: 0, longitude: 0 } },
+      ],
+    };
+  } else if (query.includes('coffee')) {
+    return {
+      destinationName: 'Coffee Shop',
+      totalDistance: 120,
+      steps: [
+        { instruction: 'Walk straight for 80 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'Turn right and walk 40 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'The coffee shop is on your left.', location: { latitude: 0, longitude: 0 } },
+      ],
+    };
+  } else if (query.includes('medical')) {
+    return {
+      destinationName: 'Medical Store',
+      totalDistance: 200,
+      steps: [
+        { instruction: 'Walk straight for 150 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'Turn left and walk 50 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'The medical store is ahead.', location: { latitude: 0, longitude: 0 } },
+      ],
+    };
+  } else if (query.includes('bus')) {
+    return {
+      destinationName: 'Bus Stop',
+      totalDistance: 90,
+      steps: [
+        { instruction: 'Walk straight for 60 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'Turn right and walk 30 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'You have reached the bus stop.', location: { latitude: 0, longitude: 0 } },
+      ],
+    };
+  }
+  // Default mock
+  return {
+    destinationName: 'Mock Destination',
+    totalDistance: 100,
+    steps: [
+      { instruction: 'Walk straight for 100 meters.', location: { latitude: 0, longitude: 0 } },
+      { instruction: 'You have arrived at your destination.', location: { latitude: 0, longitude: 0 } },
+    ],
+  };
 };

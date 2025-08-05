@@ -16,10 +16,10 @@ import { GoogleGenAI } from "@google/genai";
 export interface ImageAnalysisService {
   /**
    * Analyzes a Base64 encoded image and returns a textual description.
-   * @param base64Image The image to analyze, encoded as a Base64 string.
+   * @param params The image to analyze, with base64 string and mimeType.
    * @returns A promise that resolves to the string description of the scene.
    */
-  analyzeImage(base64Image: string): Promise<string>;
+  analyzeImage(params: { base64Image: string, mimeType?: string }): Promise<string>;
 
   /**
    * Generates a combined navigational guidance instruction.
@@ -73,11 +73,11 @@ class GeminiImageAnalysisService implements ImageAnalysisService {
     this.navigationPromptTemplate = geminiConfig.navigationPrompt;
   }
 
-  async analyzeImage(base64Image: string): Promise<string> {
+  async analyzeImage({ base64Image, mimeType = 'image/jpeg' }: { base64Image: string, mimeType?: string }): Promise<string> {
     try {
       const imagePart = {
         inlineData: {
-          mimeType: 'image/jpeg',
+          mimeType,
           data: base64Image.split(',')[1],
         },
       };
