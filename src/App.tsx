@@ -52,6 +52,8 @@ const App: React.FC = () => {
   const captureImagePromise = useCameraCapturePromise();
 
   const [view, setViewState] = useState<ViewState>(ViewState.Idle);
+  // Track where Explore was started from
+  const [prevViewBeforeExplore, setPrevViewBeforeExplore] = useState<ViewState | null>(null);
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [voiceCommandEnabled, setVoiceCommandEnabled] = useState(true);
@@ -81,6 +83,17 @@ const App: React.FC = () => {
    * handled and a state transition has begun. This flag prevents that incorrect restart.
    */
   const commandHandledRef = useRef(false);
+  
+  /**
+   * Ref to lock the entire Explore flow (capture, analyze, TTS) until TTS is finished.
+   * Prevents double processing and double TTS.
+   */
+  const isLockedRef = useRef(false);
+
+  /**
+   * Ref to track if TTS is currently in progress (including error/interrupted)
+   */
+  const ttsInProgressRef = useRef(false);
 
   /** Cancels an active navigation, stopping GPS tracking and returning to the appropriate state. */
   const handleCancelNavigation = useCancelNavigation({
@@ -105,43 +118,71 @@ const App: React.FC = () => {
   
   /** Handles the successful capture of an image, sending it to the AI service for analysis. */
   const handleCapture = useCallback(async (base64Image: string) => {
+    console.log('[Explore] handleCapture called. isLockedRef:', isLockedRef.current, 'ttsInProgressRef:', ttsInProgressRef.current);
+    if (isLockedRef.current || ttsInProgressRef.current) {
+      console.log('[Explore] Flow is locked or TTS in progress, skipping capture.');
+      return;
+    }
+    isLockedRef.current = true;
+    console.log('[Explore] handleCapture: lock set.');
+
     if (mockDataMode) {
       // Pick a random mock image and send it to the LLM for description
       const idx = Math.floor(Math.random() * mockExploreImages.length);
       const mockImage = mockExploreImages[idx];
-      setCapturedImage(mockImage); // Set the mock image as the background
       setViewState(ViewState.Loading);
+      console.log('[Explore] Mock mode: selected image', mockImage);
       try {
         const { base64: mockBase64, mimeType } = await fetchImageAsBase64(mockImage);
         if (!mockBase64 || !mockBase64.startsWith('data:image/')) {
           throw new Error('Failed to load mock image or convert to base64.');
         }
-        console.log('Mock image base64:', mockBase64.substring(0, 100)); // Log first 100 chars
+        console.log('[Explore] Mock image base64:', mockBase64.substring(0, 100));
         const result = await imageAnalysisService.analyzeImage({ base64Image: mockBase64, mimeType });
-        setDescription(result);
-        setViewState(ViewState.Result);
+        console.log('[Explore] Mock description:', result);
+        // Only set description and transition if not already in Result and TTS not running
+        if (ttsInProgressRef.current || view === ViewState.Result) {
+          console.log('[Explore] Skipping setDescription/setViewState: TTS in progress or already in Result.');
+        } else {
+          setCapturedImage(mockImage);
+          setDescription(result);
+          setViewState(ViewState.Result);
+          console.log('[Explore] setDescription and setViewState(Result) called.');
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "An unknown error occurred.";
         setError(message);
         setViewState(ViewState.Error);
+        isLockedRef.current = false;
       }
     } else {
-      setCapturedImage(base64Image); // Set the real camera image as the background
       setViewState(ViewState.Loading);
+      console.log('[Explore] Real mode: captured image', base64Image ? base64Image.substring(0, 100) : '');
       try {
         const result = await imageAnalysisService.analyzeImage({ base64Image });
-        setDescription(result);
-        setViewState(ViewState.Result);
+        console.log('[Explore] Real description:', result);
+        // Only set description and transition if not already in Result and TTS not running
+        if (ttsInProgressRef.current || view === ViewState.Result) {
+          console.log('[Explore] Skipping setDescription/setViewState: TTS in progress or already in Result.');
+        } else {
+          setCapturedImage(base64Image);
+          setDescription(result);
+          setViewState(ViewState.Result);
+          console.log('[Explore] setDescription and setViewState(Result) called.');
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "An unknown error occurred.";
         setError(message);
         setViewState(ViewState.Error);
+        isLockedRef.current = false;
       }
     }
-  }, [mockDataMode]);
+  }, [mockDataMode, view]);
 
   /** Initiates the 'Explore' sequence by switching to the camera capture view. */
   const handleStartExplore = () => {
+    // Store where we started from
+    setPrevViewBeforeExplore(view);
     if (mockDataMode) {
       // In mock mode, just trigger handleCapture with a dummy value; it will handle picking a mock image
       handleCapture('');
@@ -226,26 +267,42 @@ const App: React.FC = () => {
   });
 
   /** Effect to handle all text-to-speech actions based on the current view state. */
+  // Only trigger TTS for Result view when a new description is set
+  const lastSpokenDescriptionRef = useRef<string | null>(null);
   useEffect(() => {
-    if (view === ViewState.Result && description) {
-      // Only move to Idle after audio finishes
+    console.log('[Explore] TTS effect:', { view, description, prevViewBeforeExplore });
+    if (view === ViewState.Result && description && lastSpokenDescriptionRef.current !== description) {
+      lastSpokenDescriptionRef.current = description;
+      ttsInProgressRef.current = true;
+      console.log('[Explore] TTS: speak() called with description:', description);
       speak(description, () => {
+        ttsInProgressRef.current = false;
+        console.log('[Explore] TTS: speak() callback fired.');
         setViewState(ViewState.Idle);
-      });
-    } else if (view === ViewState.PromptingForDestination) {
-        speak("Where would you like to go?", () => {
-            setViewState(ViewState.ListeningForDestination);
-        });
-    } else if (view === ViewState.AwaitingNavigationConfirmation && routeDetails) {
-        const confirmationMessage = `I found ${routeDetails.destinationName}, which is about ${formatDistance(routeDetails.totalDistance)} away. Do you want to proceed?`;
-        speak(confirmationMessage);
-    } else if (view === ViewState.Error && error) {
-      speak(error, () => {
-          if (voiceCommandEnabled) setViewState(ViewState.ListeningForCommand);
-          else resetApp();
+        setPrevViewBeforeExplore(null);
+        lastSpokenDescriptionRef.current = null;
+        isLockedRef.current = false; // UNLOCK after TTS is done or error
       });
     }
-  }, [view, description, error, voiceCommandEnabled, resetApp, routeDetails, destination]);
+    // Reset ref if we leave Result view
+    if (view !== ViewState.Result) {
+      lastSpokenDescriptionRef.current = null;
+    }
+    if (view === ViewState.PromptingForDestination) {
+      speak("Where would you like to go?", () => {
+        setViewState(ViewState.ListeningForDestination);
+      });
+    } else if (view === ViewState.AwaitingNavigationConfirmation && routeDetails) {
+      const confirmationMessage = `I found ${routeDetails.destinationName}, which is about ${formatDistance(routeDetails.totalDistance)} away. Do you want to proceed?`;
+      speak(confirmationMessage);
+    } else if (view === ViewState.Error && error) {
+      speak(error, () => {
+        if (voiceCommandEnabled) setViewState(ViewState.ListeningForCommand);
+        else resetApp();
+        isLockedRef.current = false; // UNLOCK on error
+      });
+    }
+  }, [view, description, error, voiceCommandEnabled, resetApp, routeDetails, destination, prevViewBeforeExplore, speak]);
   
   /** Effect to fetch directions when the app enters the FetchingDirections state. */
   useEffect(() => {
