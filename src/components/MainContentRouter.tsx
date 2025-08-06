@@ -34,6 +34,7 @@ interface MainContentRouterProps {
   navigationInstruction: string;
   routeDetails: RouteDetails | null;
   handleRequestNavigationalGuidance: () => void;
+  onSettingsClick: () => void;
 }
 
 const MainContentRouter: React.FC<MainContentRouterProps> = ({
@@ -59,6 +60,7 @@ const MainContentRouter: React.FC<MainContentRouterProps> = ({
   navigationInstruction,
   routeDetails,
   handleRequestNavigationalGuidance,
+  onSettingsClick,
 }) => {
   switch (view) {
     case ViewState.Capturing:
@@ -108,7 +110,7 @@ const MainContentRouter: React.FC<MainContentRouterProps> = ({
       return <ListeningForCommandView onStopListening={resetApp} />;
     case ViewState.Idle:
     default:
-      return <IdleView onActivateListening={() => setViewState(ViewState.ListeningForCommand)} />;
+      return <IdleView onActivateListening={() => setViewState(ViewState.ListeningForCommand)} onSettingsClick={onSettingsClick} />;
   }
 };
 

@@ -362,6 +362,7 @@ const App: React.FC = () => {
     }
     return (
       <MainContentRouter
+        onSettingsClick={() => setViewState(ViewState.Settings)}
         view={view}
         handleCapture={handleCapture}
         setError={setError}
