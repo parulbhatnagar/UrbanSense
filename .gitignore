@@ -1,3 +1,7 @@
 # Ignore build output and dependencies
 node_modules/
 dist/
+
+# Local server environment (do NOT commit credentials)
+server/.env
+.env.local

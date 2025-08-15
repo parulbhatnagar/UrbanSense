@@ -47,7 +47,76 @@ const mockExploreDescriptions = [
 
 /** The main application component */
 const App: React.FC = () => {
-  const speak = useSpeechSynthesis();
+  const _rawSpeak = useSpeechSynthesis();
+  const [isTtsActive, setIsTtsActive] = useState(false);
+  // Queue for TTS to avoid overlapping utterances causing 'interrupted' errors
+  const ttsQueueRef = useRef<Array<{ text: string; onEnd?: () => void }>>([]);
+
+  // track last spoken text/time to help dedup and avoid replays
+  const lastSpokenTextRef = useRef<string | null>(null);
+  const lastSpokenAtRef = useRef<number>(0);
+
+  // Normalization used for TTS dedup checks (strip punctuation, step numbering, collapse white space)
+  const normalizeForDedup = (s: string) => s.replace(/step\s*\d+[:.]*/ig, '')
+    .replace(/[^\w\s]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // Keep a set of normalized texts currently queued to avoid duplicate enqueues
+  const ttsQueuedNormsRef = useRef<Set<string>>(new Set());
+
+  const speakNow = useCallback((text: string, onEnd?: () => void) => {
+    // mark in-progress and record last spoken info
+    ttsInProgressRef.current = true;
+    setIsTtsActive(true);
+    lastSpokenTextRef.current = text;
+    lastSpokenAtRef.current = Date.now();
+    const norm = normalizeForDedup(text);
+    // remove norm from queued set if present (we are now speaking it)
+    ttsQueuedNormsRef.current.delete(norm);
+
+    console.debug('[TTS-WRAP] starting speech, text:', text);
+    _rawSpeak(text, () => {
+      console.debug('[TTS-WRAP] speech ended for text:', text);
+      ttsInProgressRef.current = false;
+      setIsTtsActive(false);
+      try { onEnd?.(); } catch (e) { console.error('[TTS-WRAP] onEnd callback failed', e); }
+      // process next queued utterance if any
+      const next = ttsQueueRef.current.shift();
+      if (next) {
+        // slight delay to let browser settle
+        setTimeout(() => speakNow(next.text, next.onEnd), 120);
+      }
+    });
+  }, [_rawSpeak]);
+
+  const speak = useCallback((text: string, onEnd?: () => void) => {
+    const now = Date.now();
+    const norm = normalizeForDedup(text);
+
+    // Deduplicate: if same normalized text was spoken very recently, skip
+    if (lastSpokenTextRef.current && normalizeForDedup(lastSpokenTextRef.current) === norm && (now - (lastSpokenAtRef.current || 0) < 5000)) {
+      console.debug('[TTS-WRAP] skipping speak: identical normalized text spoken recently', text);
+      setTimeout(() => onEnd?.(), 0);
+      return;
+    }
+
+    // If already queued (normalized), skip adding duplicate
+    if (ttsQueuedNormsRef.current.has(norm)) {
+      console.debug('[TTS-WRAP] skipping enqueue: normalized text already in queue', text);
+      return;
+    }
+
+    // If TTS already in progress, enqueue the request to avoid interruption
+    if (ttsInProgressRef.current) {
+      console.debug('[TTS-WRAP] TTS busy, enqueueing text:', text);
+      ttsQueuedNormsRef.current.add(norm);
+      ttsQueueRef.current.push({ text, onEnd });
+      return;
+    }
+    // otherwise speak immediately
+    speakNow(text, onEnd);
+  }, [speakNow]);
+
   const playConfirmationFeedback = useConfirmationFeedback();
   const captureImagePromise = useCameraCapturePromise();
 
@@ -73,7 +142,6 @@ const App: React.FC = () => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [showCallingScreen, setShowCallingScreen] = useState(false);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const locationWatcherId = useRef<number | null>(null);
   
   /** 
@@ -195,6 +263,11 @@ const App: React.FC = () => {
   const handleStartNavigation = () => {
     setViewState(ViewState.PromptingForDestination);
   };
+
+  /** Initiates the 'Transit' sequence by prompting for a transit destination (audio-driven). */
+  const handleStartTransit = () => {
+    setViewState(ViewState.PromptingForTransitDestination);
+  };
   
   /** Handles the SOS feature, triggering a phone call to the saved contact. */
   const handleTriggerSos = useSosHandler({
@@ -205,6 +278,35 @@ const App: React.FC = () => {
     setShowCallingScreen,
     setViewState
   });
+
+  // Wrapper to simulate SOS call in demo/mock mode, otherwise delegate to real handler
+  const triggerSos = useCallback(() => {
+    const demoName = 'Dad';
+    const demoNumber = '+91 98765 43210';
+    if (mockDataMode) {
+      console.debug('[SOS Demo] Simulating SOS call to', demoName);
+      // Set demo contact info and show calling screen
+      setSosContactName(demoName);
+      setSosContactNumber(demoNumber);
+      setShowCallingScreen(true);
+
+      // Announce calling and then simulate connection
+      speak(`Calling ${demoName}`, () => {
+        // after short delay announce connected
+        setTimeout(() => {
+          speak('Call connected. To end the call, press the hang up button.');
+          console.debug('[SOS Demo] Simulated call connected');
+        }, 1200);
+      });
+    } else {
+      // Delegate to the real SOS handler which may perform actual dialing or platform-specific behavior
+      try {
+        handleTriggerSos();
+      } catch (err) {
+        console.error('[SOS] real handler failed', err);
+      }
+    }
+  }, [mockDataMode, handleTriggerSos, speak]);
   
   /** Activates the voice command loop. */
   const handleActivateVoiceLoop = () => {
@@ -252,7 +354,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  useSpeechRecognitionManager({
+  const recognitionRef = useSpeechRecognitionManager({
     view,
     voiceCommandEnabled,
     setViewState,
@@ -263,7 +365,8 @@ const App: React.FC = () => {
     handleTriggerSos,
     handleCancelNavigation,
     setDestination,
-    commandHandledRef
+    commandHandledRef,
+    ttsActive: isTtsActive,
   });
 
   /** Effect to handle all text-to-speech actions based on the current view state. */
@@ -273,11 +376,21 @@ const App: React.FC = () => {
     console.log('[Explore] TTS effect:', { view, description, prevViewBeforeExplore });
     if (view === ViewState.Result && description && lastSpokenDescriptionRef.current !== description) {
       lastSpokenDescriptionRef.current = description;
-      ttsInProgressRef.current = true;
+      // NOTE: do NOT manually set ttsInProgressRef here — speak() / speakNow will manage that flag.
       console.log('[Explore] TTS: speak() called with description:', description);
       speak(description, () => {
+        // speak's onEnd should clear the in-progress flag; ensure we clear any lingering state here as well.
         ttsInProgressRef.current = false;
         console.log('[Explore] TTS: speak() callback fired.');
+        // Clear any pending queued utterances to avoid replaying the same description after returning to Idle
+        if (ttsQueueRef.current.length > 0) {
+          console.debug('[TTS-WRAP] clearing pending TTS queue on Result end, length:', ttsQueueRef.current.length);
+          ttsQueueRef.current = [];
+        }
+        if (ttsQueuedNormsRef.current.size > 0) {
+          console.debug('[TTS-WRAP] clearing queued normalized texts on Result end, size:', ttsQueuedNormsRef.current.size);
+          ttsQueuedNormsRef.current.clear();
+        }
         setViewState(ViewState.Idle);
         setPrevViewBeforeExplore(null);
         lastSpokenDescriptionRef.current = null;
@@ -292,55 +405,88 @@ const App: React.FC = () => {
       speak("Where would you like to go?", () => {
         setViewState(ViewState.ListeningForDestination);
       });
-    } else if (view === ViewState.AwaitingNavigationConfirmation && routeDetails) {
-      const confirmationMessage = `I found ${routeDetails.destinationName}, which is about ${formatDistance(routeDetails.totalDistance)} away. Do you want to proceed?`;
-      speak(confirmationMessage);
-    } else if (view === ViewState.Error && error) {
-      speak(error, () => {
-        if (voiceCommandEnabled) setViewState(ViewState.ListeningForCommand);
-        else resetApp();
-        isLockedRef.current = false; // UNLOCK on error
+    } else if (view === ViewState.PromptingForTransitDestination) {
+      console.debug('[TTS] Prompting for transit destination');
+      speak("Where do you want to go?", () => {
+        setViewState(ViewState.ListeningForTransitDestination);
       });
-    }
-  }, [view, description, error, voiceCommandEnabled, resetApp, routeDetails, destination, prevViewBeforeExplore, speak]);
+    } else if (view === ViewState.ProcessingTransitSuggestion) {
+      console.debug('[TTS] Processing transit suggestion for destination:', destination);
+      // Simple mock suggestion logic for Delhi
+      const destLower = (destination || '').toLowerCase();
+      let suggestion = '';
+      if (mockDataMode || destLower.includes('delhi') || destLower.includes('chandni') || destLower.includes('rajiv')) {
+        if (destLower.includes('chandni') || destLower.includes('chandni chowk')) {
+          suggestion = 'You can take the Delhi Metro from Rajiv Chowk to Chandni Chowk on the Yellow Line.';
+        } else {
+          suggestion = `You can take the Delhi Metro from Rajiv Chowk to ${destination} on the Yellow Line.`;
+        }
+      } else {
+        suggestion = `Sorry, transit suggestions are not available for ${destination} yet.`;
+      }
+      // Speak suggestion and return to Idle
+      speak(suggestion, () => {
+        console.debug('[TTS] Finished speaking transit suggestion');
+        setViewState(ViewState.Idle);
+        setDestination('');
+      });
+     } else if (view === ViewState.AwaitingNavigationConfirmation && routeDetails) {
+       const confirmationMessage = `I found ${routeDetails.destinationName}, which is about ${routeDetails.totalDistance} away. Do you want to proceed?`;
+       // Speak the confirmation and then explicitly start recognition to listen for the user's yes/no answer
+       speak(confirmationMessage, () => {
+         console.debug('[TTS] confirmation spoken, attempting to start recognition for confirmation');
+         try {
+           // small delay to ensure recognition is ready
+           setTimeout(() => {
+             try {
+               recognitionRef.current?.start();
+               console.debug('[SR] recognition.start() called after confirmation TTS');
+             } catch (err) {
+               console.error('[SR] recognition.start() failed after confirmation TTS', err);
+             }
+           }, 150);
+         } catch (e) {
+           console.error('[TTS] failed to trigger recognition after confirmation', e);
+         }
+       });
+     } else if (view === ViewState.Error && error) {
+       speak(error, () => {
+         if (voiceCommandEnabled) setViewState(ViewState.ListeningForCommand);
+         else resetApp();
+         isLockedRef.current = false; // UNLOCK on error
+       });
+     }
+   }, [view, description, error, voiceCommandEnabled, resetApp, routeDetails, destination, prevViewBeforeExplore, speak]);
   
   /** Effect to fetch directions when the app enters the FetchingDirections state. */
   useEffect(() => {
     if (view !== ViewState.FetchingDirections) return;
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const startCoords: Coordinates = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
-        try {
-          const fetchedRoute = await getDirections(startCoords, destination, mockDataMode);
-          setRouteDetails(fetchedRoute);
-          setViewState(ViewState.AwaitingNavigationConfirmation);
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Failed to fetch directions.");
-          setViewState(ViewState.Error);
+    // If mockDataMode is enabled, assume a fixed Delhi coordinate (Connaught Place / Rajiv Chowk area)
+    const fetchRoute = async () => {
+      try {
+        let startCoords: Coordinates;
+        if (mockDataMode) {
+          startCoords = { latitude: 28.6329, longitude: 77.2195 };
+          console.debug('[Nav] Mock mode: using Delhi start coords', startCoords);
+        } else {
+          // Wrap geolocation in a promise for cleaner async flow
+          const pos: GeolocationPosition = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject);
+          });
+          startCoords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
         }
-      },
-      (geoError) => {
-        console.error("Geolocation error:", geoError);
-        setError("Unable to retrieve your location. Please check your location settings.");
+        const fetchedRoute = await getDirections(startCoords, destination, mockDataMode);
+        setRouteDetails(fetchedRoute);
+        setViewState(ViewState.AwaitingNavigationConfirmation);
+      } catch (err) {
+        console.error('[Nav] fetchRoute error', err);
+        setError(err instanceof Error ? err.message : "Failed to fetch directions.");
         setViewState(ViewState.Error);
       }
-    );
-
-    const giveInitialGuidanceForStep = () => {
-        if (currentStepIndex >= routeDetails.steps.length) {
-            speak("You have arrived at your destination.", handleCancelNavigation);
-            return;
-        }
-        const instruction = routeDetails.steps[currentStepIndex].instruction;
-        setNavigationInstruction(instruction);
-        speak(instruction);
     };
 
-    giveInitialGuidanceForStep();
+    fetchRoute();
 
     return () => {
       if (locationWatcherId.current) navigator.geolocation.clearWatch(locationWatcherId.current);
@@ -353,9 +499,154 @@ const App: React.FC = () => {
     setViewState(ViewState.ListeningForCommand);
   };
 
+  // Demo navigation images (simulate movement by swapping images between steps)
+  const demoNavImages = [
+    '/testData/Delhi-Chandni-Chowk-cycle-rickshaw-drivers-at-end-of-street-scaled.jpeg', // starting street view
+    '/testData/people-standing-at-a-local-bus-stand-in-new-delhi-waiting-for-public-transport-2D8RF54.jpeg', // mid approach
+    '/testData/delhi/MedicalStroe.png', // final medical store photo
+  ];
+
+  // State for the currently displayed demo navigation image and the LLM-generated caption/explanation
+  const [navigationDemoImage, setNavigationDemoImage] = useState<string | undefined>(undefined);
+  const [navigationDemoCaption, setNavigationDemoCaption] = useState<string | undefined>(undefined);
+
+  // Guard to avoid speaking the same demo step multiple times
+  const lastSpokenStepRef = useRef<number | null>(null);
+
+  // Helper: generate an explanatory caption for a demo image + instruction using the image analysis service
+  const generateImageExplanation = useCallback(async (imageUrl: string, instruction: string) => {
+    try {
+      const { base64, mimeType } = await fetchImageAsBase64(imageUrl);
+      if (!base64) return undefined;
+      // imageAnalysisService.generateNavigationalGuidance expects an image (base64 or File) and an instruction
+      const explanation = await imageAnalysisService.generateNavigationalGuidance(base64, instruction);
+      return explanation;
+    } catch (err) {
+      console.error('[Nav Demo] generateImageExplanation failed', err);
+      return undefined;
+    }
+  }, []);
+
+  // Helpers to normalize and merge instruction + LLM explanation to avoid near-duplicate speech
+  const normalizeText = (s: string) => s
+    .replace(/step\s*\d+[:.]*/ig, '')
+    .replace(/[^\w\s]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const mergeInstructionAndExplanation = (instruction: string, explanation?: string) => {
+    if (!explanation || explanation.trim().length === 0) return instruction;
+    const instrNorm = normalizeText(instruction);
+    const explNorm = normalizeText(explanation);
+    if (!instrNorm) return explanation;
+    if (!explNorm) return instruction;
+    if (explNorm.includes(instrNorm)) return explanation; // explanation already contains instruction
+    if (instrNorm.includes(explNorm)) return instruction; // instruction already contains explanation
+    return `${instruction}. ${explanation}`;
+  };
+
+  // NEW: demo navigation step progression handler. In mockDataMode we will step through routeDetails.steps
+  // and swap demo images between steps. We generate an LLM explanation for the current image + instruction
+  // and speak a single composed utterance (instruction + explanation) once per step. On the tap after the last step, we announce arrival.
+  const speakDemoStep = useCallback(async (stepIndex: number) => {
+    if (!routeDetails || stepIndex >= routeDetails.steps.length) return;
+    // Prevent re-speaking the same step if it was already spoken
+    if (lastSpokenStepRef.current === stepIndex) {
+      console.debug('[Nav Demo] speakDemoStep: step already spoken, skipping', stepIndex);
+      return;
+    }
+
+    const step = routeDetails.steps[stepIndex];
+    const imageUrl = demoNavImages[stepIndex] || demoNavImages[0];
+    setNavigationInstruction(step.instruction);
+    setNavigationDemoImage(imageUrl);
+    console.debug('[Nav Demo] preparing step:', stepIndex, 'instruction:', step.instruction, 'image:', imageUrl);
+
+    const explanation = await generateImageExplanation(imageUrl, step.instruction);
+    setNavigationDemoCaption(explanation);
+
+    // Compose a single final utterance after de-duplication
+    const finalText = mergeInstructionAndExplanation(step.instruction, explanation);
+    console.debug('[Nav Demo] final speech text for step', stepIndex, ':', finalText);
+
+    // mark as spoken before enqueuing to prevent races causing duplicate enqueues
+    lastSpokenStepRef.current = stepIndex;
+    speak(finalText);
+  }, [routeDetails, generateImageExplanation, speak]);
+
+  const handleDemoNavigationTap = useCallback(async () => {
+    if (!routeDetails) return;
+
+    // If there are steps left, speak next step (which will also update the image/caption)
+    if (currentStepIndex < routeDetails.steps.length) {
+      await speakDemoStep(currentStepIndex);
+      // advance the index so the next tap moves forward
+      setCurrentStepIndex(idx => idx + 1);
+    } else {
+      // No more steps -> arrival announcement and show the medical store image
+      const arrival = `You have arrived at ${routeDetails.destinationName || 'your destination'}.`;
+      console.debug('[Nav Demo] announcing arrival:', arrival);
+      const finalImage = demoNavImages[demoNavImages.length - 1];
+      setNavigationDemoImage(finalImage);
+
+      // generate a short caption for the final image (medical store) as well
+      try {
+        const finalCaption = await generateImageExplanation(finalImage, 'Front view of the destination.');
+        setNavigationDemoCaption(finalCaption);
+      } catch (e) {
+        setNavigationDemoCaption(undefined);
+      }
+
+      // reset spoken-step guard so the next navigation session can speak from step 0 again
+      lastSpokenStepRef.current = null;
+
+      speak(arrival, () => {
+        setViewState(ViewState.Idle);
+        setRouteDetails(null);
+        setCurrentStepIndex(0);
+        setNavigationInstruction('');
+        setNavigationDemoImage(undefined);
+        setNavigationDemoCaption(undefined);
+      });
+    }
+  }, [routeDetails, currentStepIndex, speakDemoStep, speak, generateImageExplanation]);
+
+  // When navigation becomes active in mock mode, automatically show/speak the first demo step
+  useEffect(() => {
+    if (view === ViewState.NavigationActive && mockDataMode && routeDetails) {
+      // Initialize to start and speak the first step, then advance index so tap doesn't repeat it
+      setCurrentStepIndex(0);
+      (async () => {
+        try {
+          await speakDemoStep(0);
+          setCurrentStepIndex(1);
+        } catch (err) {
+          console.error('[Nav Demo] initial speakDemoStep failed', err);
+        }
+      })();
+    }
+  }, [view, mockDataMode, routeDetails, speakDemoStep]);
+
+  const handleHangUp = useCallback(() => {
+    console.debug('[SOS] hang up pressed');
+    // Stop any active speech synthesis / recognition and return app to Idle
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {
+      console.debug('[SOS] speechSynthesis.cancel failed', e);
+    }
+    try { recognitionRef.current?.stop(); } catch (e) { /* ignore */ }
+
+    setShowCallingScreen(false);
+    setViewState(ViewState.Idle);
+    setSosContactName('');
+    setSosContactNumber('');
+  }, []);
+
   const renderContent = () => {
     if (showCallingScreen) {
-      return <CallingScreen contactName={sosContactName} contactNumber={sosContactNumber} />;
+      return <CallingScreen contactName={sosContactName} contactNumber={sosContactNumber} demoMode={mockDataMode} onHangUp={handleHangUp} />;
     }
     if (!permissionsGranted) {
       return <PermissionsScreen onGrant={requestPermissions} />;
@@ -385,7 +676,9 @@ const App: React.FC = () => {
         viewState={view}
         navigationInstruction={navigationInstruction}
         routeDetails={routeDetails}
-        handleRequestNavigationalGuidance={handleRequestNavigationalGuidance}
+        handleRequestNavigationalGuidance={mockDataMode ? handleDemoNavigationTap : handleRequestNavigationalGuidance}
+        navigationImage={mockDataMode ? navigationDemoImage : undefined}
+        navigationImageCaption={mockDataMode ? navigationDemoCaption : undefined}
       />
     );
   };
@@ -407,12 +700,15 @@ const App: React.FC = () => {
           </svg>
         </button>
       </div>
+
       <div className="flex-grow flex flex-col">{renderContent()}</div>
+
       {showFooter && (
-         <AppFooter 
+        <AppFooter
           onExploreClick={handleStartExplore}
+          onTransitClick={handleStartTransit}
           onNavigateClick={handleStartNavigation}
-          onSosClick={handleTriggerSos}
+          onSosClick={triggerSos}
         />
       )}
     </main>

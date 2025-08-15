@@ -23,10 +23,16 @@ export enum ViewState {
   Settings = 'SETTINGS',
   /** The app is speaking the prompt for a navigation destination. */
   PromptingForDestination = 'PROMPTING_FOR_DESTINATION',
+  /** The app is speaking the prompt for a transit destination (e.g., asking which stop/station). */
+  PromptingForTransitDestination = 'PROMPTING_FOR_TRANSIT_DESTINATION',
   /** The app is actively listening for the user to speak a destination. */
   ListeningForDestination = 'LISTENING_FOR_DESTINATION',
+  /** The app is actively listening for the user to speak a transit-specific destination. */
+  ListeningForTransitDestination = 'LISTENING_FOR_TRANSIT_DESTINATION',
   /** The app is fetching the user's location and calculating a route. */
   FetchingDirections = 'FETCHING_DIRECTIONS',
+  /** The app is processing the spoken transit destination and preparing suggestions. */
+  ProcessingTransitSuggestion = 'PROCESSING_TRANSIT_SUGGESTION',
   /** The app is waiting for the user to confirm the fetched route. */
   AwaitingNavigationConfirmation = 'AWAITING_NAVIGATION_CONFIRMATION',
   /** The app is actively providing turn-by-turn navigation guidance. */

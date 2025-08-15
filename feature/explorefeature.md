@@ -67,7 +67,6 @@ The Explore feature allows users to analyze their surroundings using the device 
 
 ---
 
-
 ---
 
 ## 7. Conversation Mode Example

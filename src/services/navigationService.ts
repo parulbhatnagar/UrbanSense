@@ -165,8 +165,8 @@ const getMockRoute = (destinationQuery: string): RouteDetails => {
       destinationName: 'Medical Store',
       totalDistance: 200,
       steps: [
-        { instruction: 'Walk straight for 150 meters.', location: { latitude: 0, longitude: 0 } },
-        { instruction: 'Turn left and walk 50 meters.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'Walk straight for 150 meters and then take right.', location: { latitude: 0, longitude: 0 } },
+        { instruction: 'Walk forward 50 meters.', location: { latitude: 0, longitude: 0 } },
         { instruction: 'The medical store is ahead.', location: { latitude: 0, longitude: 0 } },
       ],
     };

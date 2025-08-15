@@ -1,0 +1,4 @@
+flask
+flask-cors
+ibm-watsonx-ai
+requests

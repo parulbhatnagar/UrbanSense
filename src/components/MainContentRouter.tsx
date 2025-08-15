@@ -35,6 +35,8 @@ interface MainContentRouterProps {
   routeDetails: RouteDetails | null;
   handleRequestNavigationalGuidance: () => void;
   onSettingsClick: () => void;
+  navigationImage?: string; // optional demo image to show while navigating
+  navigationImageCaption?: string; // optional caption/explanation for the sample image
 }
 
 const MainContentRouter: React.FC<MainContentRouterProps> = ({
@@ -61,6 +63,8 @@ const MainContentRouter: React.FC<MainContentRouterProps> = ({
   routeDetails,
   handleRequestNavigationalGuidance,
   onSettingsClick,
+  navigationImage,
+  navigationImageCaption,
 }) => {
   switch (view) {
     case ViewState.Capturing:
@@ -85,8 +89,12 @@ const MainContentRouter: React.FC<MainContentRouterProps> = ({
       />;
     case ViewState.PromptingForDestination:
       return <LoadingView message="Please wait..." />;
+    case ViewState.PromptingForTransitDestination:
+      return <LoadingView message="Asking for your transit destination..." />;
     case ViewState.ListeningForDestination:
       return <LoadingView message="Listening for destination..." />;
+    case ViewState.ListeningForTransitDestination:
+      return <LoadingView message="Listening for transit destination..." />;
     case ViewState.FetchingDirections:
     case ViewState.AwaitingNavigationConfirmation:
       return (
@@ -105,6 +113,8 @@ const MainContentRouter: React.FC<MainContentRouterProps> = ({
         instruction={navigationInstruction} 
         onCancel={handleCancelNavigation} 
         onRequestUpdate={handleRequestNavigationalGuidance}
+        imageUrl={navigationImage}
+        imageCaption={navigationImageCaption}
       />;
     case ViewState.ListeningForCommand:
       return <ListeningForCommandView onStopListening={resetApp} />;
