@@ -62,8 +62,8 @@ const config = {
       // Preferred: a server-side proxy that will forward requests to Watson with credentials.
       // Implement a server endpoint that accepts POST { type: 'analyze'|'navigate', base64Image, instruction? }
       // and returns { text: string }.
-      // PRODUCTION: use the relative backend route so credentials stay server-side.
-      proxyUrl: '/api/watson/infer'
+      // PRODUCTION: use Netlify functions for serverless deployment
+      proxyUrl: '/.netlify/functions/watson-infer'
     }
   }
 };
