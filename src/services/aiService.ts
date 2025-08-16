@@ -62,8 +62,8 @@ const config = {
       // Preferred: a server-side proxy that will forward requests to Watson with credentials.
       // Implement a server endpoint that accepts POST { type: 'analyze'|'navigate', base64Image, instruction? }
       // and returns { text: string }.
-      // DEVELOPMENT: point to the local proxy started on port 5001
-      proxyUrl: 'http://127.0.0.1:5001/api/watson/infer'
+      // PRODUCTION: use the relative backend route so credentials stay server-side.
+      proxyUrl: '/api/watson/infer'
     }
   }
 };
