@@ -78,13 +78,7 @@ declare global {
     webkitAudioContext: typeof AudioContext;
   }
 
-  // Type for process.env, which is expected to be populated by the build environment
-  const process: {
-    env: {
-      API_KEY: string;
-      [key: string]: string | undefined;
-    }
-  };
+  // Types for build environment variables (removed process declaration to avoid conflicts)
 
   // Types for the Web Speech API
   interface SpeechRecognition extends EventTarget {
