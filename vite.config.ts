@@ -8,14 +8,14 @@ export default defineConfig({
     proxy: {
       // Dev: proxy to local Flask server
       '/api/watson/infer': {
-        target: 'http://127.0.0.1:5001',
+        target: 'http://127.0.0.1:5002',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/watson\/infer/, '/api/watson/infer')
       },
       // Dev: proxy Netlify functions for testing
       '/.netlify/functions/watson-infer': {
-        target: 'http://127.0.0.1:5001',
+        target: 'http://127.0.0.1:5002',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => '/api/watson/infer'

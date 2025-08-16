@@ -25,8 +25,8 @@ export const handler: Handler = async (event, context) => {
 
     // Build prompt based on type
     const prompt = type === 'analyze' 
-      ? 'Describe the scene in this image with spatial context. Keep it concise (2-3 sentences) and speak directly to the user.'
-      : `You are a navigation assistant. The core instruction is: '${instruction}'. Use the image only to provide safety/contextual information (obstacles, clear path). Be concise and give a single direct command.`;
+      ? 'You are a visual assistant for someone who needs detailed spatial awareness. Describe this scene focusing on: 1) What\'s directly ahead and around, 2) Any people, vehicles, or obstacles, 3) The type of environment (street, sidewalk, building, etc.), 4) Important spatial relationships and distances. Be descriptive but conversational, as if helping someone navigate the world. Provide 3-4 sentences with actionable detail.'
+      : `You are a navigation assistant helping someone follow this direction: "${instruction}". Look at the image and provide: 1) What you can see ahead that relates to the navigation instruction, 2) Any obstacles, hazards, or people to be aware of, 3) Confirmation if the path looks clear or what to watch for, 4) A specific next action based on what\'s visible. Be supportive and descriptive, giving confidence about the route ahead.`;
 
     // Call Watson API
     const watsonResponse = await fetch(`${process.env.WATSON_URL}/v1/projects/${process.env.WATSON_PROJECT_ID}/model_inference?version=2024-07-01`, {
